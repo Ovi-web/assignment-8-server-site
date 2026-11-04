@@ -30,6 +30,20 @@ const ensureCollection = async (db, name) => {
   }
 };
 
+app.get('/books', async (req, res) => {
+  const filter = req.query.email ? { userEmail: req.query.email } : {};
+  res.send(await books.find(filter).toArray());
+});
+
+app.get('/books/:id', async (req, res) => {
+  const id = getId(req.params.id);
+  if (!id) return res.status(400).send({ message: 'Invalid book ID' });
+
+  const book = await books.findOne({ _id: id });
+  if (!book) return res.status(404).send({ message: 'Book not found' });
+  res.send(book);
+});
+
 app.get('/', (req, res) => {
   res.send({
     message: 'Server is running',
