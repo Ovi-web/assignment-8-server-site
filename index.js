@@ -113,6 +113,24 @@ app.post('/borrows', async (req, res) => {
   res.status(201).send(result);
 });
 
+app.get('/borrows', async (req, res) => {
+  const filter = req.query.email ? { userEmail: req.query.email } : {};
+  res.send(await borrows.find(filter).toArray());
+});
+
+app.delete('/borrows/:id', async (req, res) => {
+  const id = getId(req.params.id);
+  if (!id) return res.status(400).send({ message: 'Invalid borrow ID' });
+
+  const borrow = await borrows.findOne({ _id: id });
+  if (!borrow) return res.status(404).send({ message: 'Borrow not found' });
+
+  const result = await borrows.deleteOne({ _id: id });
+  const bookId = getId(borrow.bookId);
+  if (bookId) await books.updateOne({ _id: bookId }, { $inc: { totalCopies: 1 } });
+  res.send(result);
+});
+
 app.get('/', (req, res) => {
   res.send({
     message: 'Server is running',
