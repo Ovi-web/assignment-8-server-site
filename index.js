@@ -44,6 +44,37 @@ app.get('/books/:id', async (req, res) => {
   res.send(book);
 });
 
+app.patch('/books/:id', async (req, res) => {
+  const id = getId(req.params.id);
+  if (!id) return res.status(400).send({ message: 'Invalid book ID' });
+
+  const updates = { ...req.body };
+  if (updates.totalCopies !== undefined) {
+    updates.totalCopies = Number(updates.totalCopies);
+    if (!Number.isFinite(updates.totalCopies)) {
+      return res.status(400).send({ message: 'totalCopies must be a number' });
+    }
+  }
+
+  const result = await books.updateOne({ _id: id }, { $set: updates });
+  if (!result.matchedCount) return res.status(404).send({ message: 'Book not found' });
+  res.send({ success: true, message: 'Book updated successfully' });
+});
+
+app.delete('/books/:id', async (req, res) => {
+  const id = getId(req.params.id);
+  if (!id) return res.status(400).send({ message: 'Invalid book ID' });
+
+  const borrowed = await borrows.findOne({
+    bookId: { $in: [req.params.id, id] },
+  });
+  if (borrowed) return res.status(400).send({ message: 'This book is currently borrowed.' });
+
+  const result = await books.deleteOne({ _id: id });
+  if (!result.deletedCount) return res.status(404).send({ message: 'Book not found' });
+  res.send({ success: true, message: 'Book deleted successfully' });
+});
+
 app.post('/add-books', async (req, res) => {
   if (typeof req.body.userEmail !== 'string' || !req.body.userEmail.trim()) {
     return res.status(400).send({ message: 'A user email is required to add a book.' });
