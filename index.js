@@ -137,3 +137,29 @@ app.get('/', (req, res) => {
     database: databaseReady ? 'connected' : 'disconnected',
   });
 });
+
+app.listen(PORT, () => {
+  console.log(`Server is running at ${PORT}`);
+
+  if (!process.env.MONGODB_URI) {
+    console.error('MONGODB_URI is missing. Add it to the .env file to enable database routes.');
+    return;
+  }
+
+  const client = new MongoClient(process.env.MONGODB_URI);
+  client.connect()
+    .then(async () => {
+      const db = client.db('booknookserver');
+      await Promise.all([
+        ensureCollection(db, 'books'),
+        ensureCollection(db, 'borrows'),
+      ]);
+      books = db.collection('books');
+      borrows = db.collection('borrows');
+      databaseReady = true;
+      console.log('Connected to MongoDB');
+    })
+    .catch((error) => {
+      console.error(`MongoDB connection failed: ${error.message}`);
+    });
+});
