@@ -94,6 +94,25 @@ app.post('/add-books', async (req, res) => {
   res.status(201).send(result);
 });
 
+app.post('/borrows', async (req, res) => {
+  const { bookId, userEmail } = req.body;
+  const id = getId(bookId);
+  if (!id || typeof userEmail !== 'string' || !userEmail.trim()) {
+    return res.status(400).send({ message: 'Valid bookId and userEmail are required' });
+  }
+
+  const book = await books.findOne({ _id: id });
+  if (!book) return res.status(404).send({ message: 'Book not found' });
+  if (book.totalCopies <= 0) return res.status(400).send({ message: 'This book is unavailable' });
+
+  const alreadyBorrowed = await borrows.findOne({ bookId: String(bookId), userEmail });
+  if (alreadyBorrowed) return res.status(400).send({ message: 'Already borrowed this book!' });
+
+  const result = await borrows.insertOne({ ...req.body, bookId: String(bookId), createdAt: new Date() });
+  await books.updateOne({ _id: id }, { $inc: { totalCopies: -1 } });
+  res.status(201).send(result);
+});
+
 app.get('/', (req, res) => {
   res.send({
     message: 'Server is running',
