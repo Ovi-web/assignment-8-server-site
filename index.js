@@ -259,3 +259,6 @@ app.listen(PORT, () => {
       console.error(`MongoDB connection failed: ${error.message}`);
     });
 });
+
+
+export default app;
