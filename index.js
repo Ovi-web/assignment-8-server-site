@@ -10,6 +10,11 @@ if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
   throw new Error('PORT must be an integer between 1 and 65535');
 }
 
+const mongoUri = process.env.MONGODB_URI;
+const mongoClient = mongoUri ? new MongoClient(mongoUri) : null;
+if (!mongoClient) {
+  console.error('MONGODB_URI is missing. Configure it in the deployment environment.');
+}
 const authBaseURL = process.env.BETTER_AUTH_URL;
 const clientOrigin = new URL(
   process.env.CLIENT_ORIGIN || authBaseURL || `${process.env.CLIENT_URL}`,
@@ -26,23 +31,40 @@ app.use(express.json());
 let books;
 let borrows;
 let databaseReady = false;
+let databaseConnection;
 
-app.use((req, res, next) => {
-  if (!databaseReady && req.path !== '/') {
-    return res.status(503).send({ message: 'Database is not connected yet' });
+const connectToDatabase = async () => {
+  if (!mongoClient) throw new Error('MONGODB_URI is not configured');
+
+  if (!databaseConnection) {
+    databaseConnection = mongoClient.connect()
+      .then(() => {
+        const db = mongoClient.db('booknookserver');
+        books = db.collection('books');
+        borrows = db.collection('borrows');
+        databaseReady = true;
+        console.log('Connected to MongoDB');
+      })
+      .catch((error) => {
+        databaseConnection = undefined;
+        console.error(`MongoDB connection failed: ${error.message}`);
+        throw error;
+      });
+  }
+
+  await databaseConnection;
+};
+
+app.use(async (req, res, next) => {
+  try {
+    await connectToDatabase();
+  } catch {
+    return res.status(503).send({ message: 'Database connection failed' });
   }
   next();
 });
 
 const getId = (id) => typeof id === 'string' && ObjectId.isValid(id) ? new ObjectId(id) : null;
-
-const ensureCollection = async (db, name) => {
-  try {
-    await db.createCollection(name);
-  } catch (error) {
-    if (error.code !== 48) throw error;
-  }
-};
 
 const getJwtFromRequest = (req) => {
   const authorization = req.get('authorization');
@@ -229,35 +251,15 @@ app.get('/', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running at ${PORT}`);
-  if (!jwtSecret) {
-    console.error('JWT_SECRET is missing. Protected routes will return 503 until it is configured.');
-  } else if (!jwtSecretReady) {
-    console.error('JWT_SECRET must be at least 32 bytes for HS256. Protected routes will return 503.');
-  }
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    console.log(`Server is running at ${PORT}`);
+    if (!jwtSecret) {
+      console.error('JWT_SECRET is missing. Protected routes will return 503 until it is configured.');
+    } else if (!jwtSecretReady) {
+      console.error('JWT_SECRET must be at least 32 bytes for HS256. Protected routes will return 503.');
+    }
+  });
+}
 
-  if (!process.env.MONGODB_URI) {
-    console.error('MONGODB_URI is missing. Add it to the .env file to enable database routes.');
-    return;
-  }
-
-  const client = new MongoClient(process.env.MONGODB_URI);
-  client.connect()
-    .then(async () => {
-      const db = client.db('booknookserver');
-      await Promise.all([
-        ensureCollection(db, 'books'),
-        ensureCollection(db, 'borrows'),
-      ]);
-      books = db.collection('books');
-      borrows = db.collection('borrows');
-      databaseReady = true;
-      console.log('Connected to MongoDB');
-    })
-    .catch((error) => {
-      console.error(`MongoDB connection failed: ${error.message}`);
-    });
-});
-
-
+export default app;
